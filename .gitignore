@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+chat_log.json
+config.json
+*.log
+.env
