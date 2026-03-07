@@ -347,6 +347,54 @@ def _beep_error():
 
 
 # ---------------------------------------------------------------------------
+# Send to Claude Code window (works even when window is not focused)
+# ---------------------------------------------------------------------------
+
+def _find_claude_hwnd():
+    import win32gui
+    matches = []
+    def _cb(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if "claude" in title.lower():
+                matches.append(hwnd)
+    win32gui.EnumWindows(_cb, None)
+    return matches[0] if matches else None
+
+
+def _send_to_claude(text: str):
+    import win32gui, win32con
+    hwnd = _find_claude_hwnd()
+    prev = win32gui.GetForegroundWindow()
+
+    if hwnd is None:
+        print("[PTT] Claude window not found — pasting into active window")
+        hwnd = prev
+
+    # Restore if minimised, bring to front
+    if win32gui.IsIconic(hwnd):
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    win32gui.SetForegroundWindow(hwnd)
+    time.sleep(0.15)
+
+    _kb.press(Key.ctrl)
+    _kb.press('v')
+    _kb.release('v')
+    _kb.release(Key.ctrl)
+    time.sleep(0.15)
+    _kb.press(Key.enter)
+    _kb.release(Key.enter)
+    time.sleep(0.1)
+
+    # Return focus to wherever the user was
+    if prev and prev != hwnd:
+        try:
+            win32gui.SetForegroundWindow(prev)
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Transcription + send
 # ---------------------------------------------------------------------------
 
@@ -387,16 +435,9 @@ def _transcribe_and_send(audio_data: np.ndarray):
         print(f"Transcribed: {text}")
         _append_chat("user", text)
 
-        # Paste into active window then send Enter via pynput (works in terminals)
+        # Find Claude Code terminal and send there, then restore focus
         pyperclip.copy(text)
-        time.sleep(0.05)
-        _kb.press(Key.ctrl)
-        _kb.press('v')
-        _kb.release('v')
-        _kb.release(Key.ctrl)
-        time.sleep(0.15)
-        _kb.press(Key.enter)
-        _kb.release(Key.enter)
+        _send_to_claude(text)
 
     except Exception as e:
         print(f"Transcription error: {e}")
