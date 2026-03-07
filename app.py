@@ -49,6 +49,19 @@ def _get_sapi_voices() -> list[str]:
     except Exception:
         return []
 
+
+@st.cache_data(ttl=3600)
+def _get_edge_voices() -> list[str]:
+    """Return edge-tts English voice short names, cached for 1 hour."""
+    try:
+        import asyncio, edge_tts
+        async def _fetch():
+            mgr = await edge_tts.list_voices()
+            return [v["ShortName"] for v in mgr if v["Locale"].startswith("en-")]
+        return sorted(asyncio.run(_fetch()))
+    except Exception:
+        return []
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -290,19 +303,24 @@ with col1:
 
     # Voice selector
     st.subheader("Voice")
-    available_voices = _get_sapi_voices()
-    if available_voices:
-        current_voice = st.session_state.voice or available_voices[0]
-        # Default to first voice if saved voice no longer exists
-        if current_voice not in available_voices:
-            current_voice = available_voices[0]
-        selected_voice = st.selectbox("SAPI Voice", available_voices,
-                                      index=available_voices.index(current_voice))
+    sapi_voices  = _get_sapi_voices()
+    edge_voices  = _get_edge_voices()
+    all_voices   = sapi_voices + edge_voices
+    if all_voices:
+        current_voice = st.session_state.voice or "en-US-AvaNeural"
+        if current_voice not in all_voices:
+            current_voice = all_voices[0]
+        selected_voice = st.selectbox(
+            "Voice (SAPI or Neural)",
+            all_voices,
+            index=all_voices.index(current_voice),
+            format_func=lambda v: f"Neural: {v}" if "-" in v and "Neural" in v else f"SAPI: {v}",
+        )
         if selected_voice != st.session_state.voice:
             st.session_state.voice = selected_voice
             _save_config()
     else:
-        st.caption("No SAPI voices found.")
+        st.caption("No voices found.")
 
     st.divider()
 

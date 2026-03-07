@@ -91,6 +91,33 @@ _tts_q: _queue.Queue = _queue.Queue()
 _tts_paused = False   # set from config on startup
 
 
+def _is_edge_voice(voice_name: str) -> bool:
+    """Edge-tts voices follow the pattern like 'en-US-AvaNeural'."""
+    return bool(voice_name and re.match(r'^[a-z]{2}-[A-Z]{2}-\w+Neural', voice_name))
+
+
+def _speak_edge(text: str, voice: str, rate: int):
+    import asyncio, edge_tts, os
+    from playsound import playsound
+    # Map wpm rate to edge-tts percentage: 150 wpm = +0%
+    rate_pct = round((rate - 150) / 1.5)
+    rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
+    async def _run():
+        communicate = edge_tts.Communicate(text, voice=voice, rate=rate_str)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            tmp = f.name
+        await communicate.save(tmp)
+        return tmp
+    tmp = asyncio.run(_run())
+    try:
+        playsound(tmp)
+    finally:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+
+
 def _tts_worker():
     import win32com.client
     import pythoncom
@@ -105,21 +132,24 @@ def _tts_worker():
             break
         text, rate = item
         try:
-            # Apply voice if changed
-            cfg_voice = load_config().get("voice")
-            if cfg_voice and cfg_voice != _applied_voice:
-                voices = speaker.GetVoices()
-                for i in range(voices.Count):
-                    if voices.Item(i).GetDescription() == cfg_voice:
-                        speaker.Voice = voices.Item(i)
-                        _applied_voice = cfg_voice
-                        print(f"[TTS] voice set to: {cfg_voice}")
-                        break
+            cfg_voice = load_config().get("voice") or ""
 
-            # SAPI rate: -10 (slowest) to +10 (fastest). 165 wpm ≈ 0, map linearly.
-            sapi_rate = max(-10, min(10, round((rate - 165) / 15)))
-            speaker.Rate = sapi_rate
-            speaker.Speak(text)
+            if _is_edge_voice(cfg_voice):
+                _speak_edge(text, cfg_voice, rate)
+            else:
+                # SAPI voice — apply if changed
+                if cfg_voice and cfg_voice != _applied_voice:
+                    voices = speaker.GetVoices()
+                    for i in range(voices.Count):
+                        if voices.Item(i).GetDescription() == cfg_voice:
+                            speaker.Voice = voices.Item(i)
+                            _applied_voice = cfg_voice
+                            print(f"[TTS] voice set to: {cfg_voice}")
+                            break
+                # SAPI rate: -10 to +10. 165 wpm ≈ 0.
+                sapi_rate = max(-10, min(10, round((rate - 165) / 15)))
+                speaker.Rate = sapi_rate
+                speaker.Speak(text)
         except Exception as e:
             print(f"[TTS] error: {e}")
             try:
