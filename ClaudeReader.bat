@@ -10,6 +10,6 @@ REM Small delay so PTT window appears first
 timeout /t 2 /nobreak >nul
 
 REM Launch Streamlit UI (opens browser automatically)
-start "ClaudeReader UI" "C:\Users\zkrep\AppData\Local\Programs\Python\Python312\Scripts\streamlit.exe" run app.py --server.port 8052 --server.headless false
+start "ClaudeReader UI" /D "C:\Users\zkrep\ClaudeReader" "C:\Users\zkrep\AppData\Local\Programs\Python\Python312\Scripts\streamlit.exe" run app.py --server.port 8052 --server.headless false
 
 exit
