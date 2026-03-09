@@ -80,6 +80,8 @@ if "capturing"      not in st.session_state: st.session_state.capturing      = F
 if "captured_key"   not in st.session_state: st.session_state.captured_key   = None
 if "threads_up"     not in st.session_state: st.session_state.threads_up     = False
 if "hotkey"         not in st.session_state: st.session_state.hotkey         = None
+if "hotkey2"        not in st.session_state: st.session_state.hotkey2        = None
+if "capturing2"     not in st.session_state: st.session_state.capturing2     = False
 if "rate"           not in st.session_state: st.session_state.rate           = 165
 if "voice"          not in st.session_state: st.session_state.voice          = None
 
@@ -88,9 +90,10 @@ def _load_config():
     if CONFIG_FILE.exists():
         try:
             cfg = json.loads(CONFIG_FILE.read_text())
-            st.session_state.hotkey = cfg.get("hotkey")
-            st.session_state.rate   = cfg.get("rate", 165)
-            st.session_state.voice  = cfg.get("voice")
+            st.session_state.hotkey  = cfg.get("hotkey")
+            st.session_state.hotkey2 = cfg.get("hotkey2")
+            st.session_state.rate    = cfg.get("rate", 165)
+            st.session_state.voice   = cfg.get("voice")
         except Exception:
             pass
 
@@ -98,6 +101,7 @@ def _load_config():
 def _save_config():
     cfg = {
         "hotkey":  st.session_state.hotkey,
+        "hotkey2": st.session_state.hotkey2,
         "rate":    st.session_state.rate,
         "volume":  0.95,
         "paused":  st.session_state.paused,
@@ -232,6 +236,11 @@ if shared.get("captured_key") and st.session_state.capturing:
     shared["captured_key"]        = None
     st.session_state.capturing    = False
     _save_config()
+elif shared.get("captured_key") and st.session_state.capturing2:
+    st.session_state.hotkey2      = shared["captured_key"]
+    shared["captured_key"]        = None
+    st.session_state.capturing2   = False
+    _save_config()
 
 if shared:
     st.session_state.paused = shared.get("paused", st.session_state.paused)
@@ -285,6 +294,36 @@ with col1:
             st.session_state.hotkey = None
             if shared:
                 shared["hotkey"] = None
+            _save_config()
+            st.rerun()
+
+    st.divider()
+
+    # Hotkey 2 (keyboard fallback)
+    st.subheader("Fallback Hotkey (keyboard)")
+
+    current_hk2 = st.session_state.hotkey2 or "None assigned"
+    st.write(f"Current fallback hotkey: `{current_hk2}`")
+
+    if st.session_state.capturing2:
+        st.info("Press the fallback key now...")
+        time.sleep(0.5)
+        if shared.get("captured_key"):
+            st.session_state.hotkey2     = shared["captured_key"]
+            shared["captured_key"]       = None
+            st.session_state.capturing2  = False
+            shared["capturing"]          = False
+            _save_config()
+        st.rerun()
+    else:
+        if st.button("Assign Fallback Hotkey", use_container_width=True):
+            st.session_state.capturing2 = True
+            if shared:
+                shared["capturing"] = True
+            st.rerun()
+
+        if st.button("Clear Fallback Hotkey", use_container_width=True):
+            st.session_state.hotkey2 = None
             _save_config()
             st.rerun()
 

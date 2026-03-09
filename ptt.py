@@ -420,10 +420,10 @@ def _key_name(key) -> str:
         return str(key)
 
 
-def run(hotkey: str):
+def run(hotkeys: list):
     global _is_recording, _recording
 
-    print(f"PTT listening. Hotkey: {hotkey}")
+    print(f"PTT listening. Hotkeys: {hotkeys}")
     print("Tap once to start recording, tap again to send.")
     _start_stream()
     _beep_start()   # startup confirmation beep
@@ -431,7 +431,7 @@ def run(hotkey: str):
     def on_press(key):
         global _is_recording, _recording
         name = _key_name(key)
-        if name != hotkey:
+        if name not in hotkeys:
             return
 
         if not _is_recording:
@@ -461,14 +461,16 @@ def run(hotkey: str):
 
 if __name__ == "__main__":
     cfg    = load_config()
-    hotkey = cfg.get("hotkey")
+    hotkey  = cfg.get("hotkey")
+    hotkey2 = cfg.get("hotkey2")
 
-    if not hotkey:
+    hotkeys = [k for k in [hotkey, hotkey2] if k]
+    if not hotkeys:
         print("No hotkey assigned. Open ClaudeReader (localhost:8052) and assign one first.")
         sys.exit(1)
 
     try:
-        run(hotkey)
+        run(hotkeys)
     except KeyboardInterrupt:
         print("\nPTT stopped.")
     finally:
