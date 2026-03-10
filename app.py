@@ -254,14 +254,20 @@ col1, col2 = st.columns([1, 1])
 with col1:
     st.subheader("Controls")
 
-    # Pause / Resume
+    # Pause / Resume + Skip
     pause_label = "Resume" if st.session_state.paused else "Pause"
-    if st.button(pause_label, use_container_width=True):
-        st.session_state.paused = not st.session_state.paused
-        if shared:
-            shared["paused"] = st.session_state.paused
-        _save_config()
-        st.rerun()
+    btn_col1, btn_col2 = st.columns(2)
+    with btn_col1:
+        if st.button(pause_label, use_container_width=True):
+            st.session_state.paused = not st.session_state.paused
+            if shared:
+                shared["paused"] = st.session_state.paused
+            _save_config()
+            st.rerun()
+    with btn_col2:
+        if st.button("Skip", use_container_width=True):
+            (Path(__file__).parent / "skip.flag").write_text("skip")
+            st.rerun()
 
     st.divider()
 

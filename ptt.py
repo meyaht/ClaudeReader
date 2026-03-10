@@ -89,6 +89,35 @@ import queue as _queue
 
 _tts_q: _queue.Queue = _queue.Queue()
 _tts_paused = False   # set from config on startup
+_skip_flag  = threading.Event()
+
+SKIP_FILE = Path(__file__).parent / "skip.flag"
+
+
+def _do_skip():
+    """Drain the TTS queue and signal the worker to stop current utterance."""
+    _skip_flag.set()
+    while not _tts_q.empty():
+        try:
+            _tts_q.get_nowait()
+            _tts_q.task_done()
+        except Exception:
+            break
+
+
+def _skip_watcher():
+    """Watch for skip.flag written by the Streamlit UI."""
+    while True:
+        if SKIP_FILE.exists():
+            try:
+                SKIP_FILE.unlink()
+            except Exception:
+                pass
+            _do_skip()
+        time.sleep(0.1)
+
+
+threading.Thread(target=_skip_watcher, daemon=True).start()
 
 
 def _is_edge_voice(voice_name: str) -> bool:
@@ -126,16 +155,27 @@ def _tts_worker():
     speaker.Volume = 95
     _applied_voice = None
 
+    SVSFlagsAsync        = 1
+    SVSFPurgeBeforeSpeak = 2
+
     while True:
         item = _tts_q.get()
         if item is None:
             break
         text, rate = item
+
+        # If skip was signaled while this item was queued, discard it
+        if _skip_flag.is_set():
+            _tts_q.task_done()
+            continue
+
         try:
             cfg_voice = load_config().get("voice") or ""
 
             if _is_edge_voice(cfg_voice):
                 _speak_edge(text, cfg_voice, rate)
+                # Edge-tts is blocking — clear flag after it finishes
+                _skip_flag.clear()
             else:
                 # SAPI voice — apply if changed
                 if cfg_voice and cfg_voice != _applied_voice:
@@ -146,10 +186,16 @@ def _tts_worker():
                             _applied_voice = cfg_voice
                             print(f"[TTS] voice set to: {cfg_voice}")
                             break
-                # SAPI rate: -10 to +10. 165 wpm ≈ 0.
                 sapi_rate = max(-10, min(10, round((rate - 165) / 15)))
                 speaker.Rate = sapi_rate
-                speaker.Speak(text)
+                # Async speak so we can interrupt on skip
+                speaker.Speak(text, SVSFlagsAsync)
+                while speaker.Status.RunningState == 2:   # 2 = SPRS_IS_SPEAKING
+                    if _skip_flag.is_set():
+                        speaker.Speak("", SVSFlagsAsync | SVSFPurgeBeforeSpeak)
+                        break
+                    time.sleep(0.05)
+                _skip_flag.clear()
         except Exception as e:
             print(f"[TTS] error: {e}")
             try:
