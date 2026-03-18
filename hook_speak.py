@@ -40,7 +40,7 @@ def _is_prose(line: str) -> bool:
     for pat in _SKIP_RE:
         if pat.search(s):
             return False
-    if len(s.split()) < 4:
+    if len(s.split()) < 2:
         return False
     return True
 

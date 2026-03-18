@@ -159,7 +159,7 @@ def _is_prose(line: str) -> bool:
         if pat.search(s):
             return False
     # Need at least 4 words to be worth speaking
-    if len(s.split()) < 4:
+    if len(s.split()) < 2:
         return False
     return True
 
