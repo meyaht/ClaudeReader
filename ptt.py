@@ -72,8 +72,8 @@ _model_ready = threading.Event()
 
 def _load_model():
     global _model
-    print("Loading Whisper model (small) — first run downloads ~460 MB...")
-    _model = WhisperModel("small", device="cpu", compute_type="int8")
+    print("Loading Whisper model (tiny.en) — first run downloads ~40 MB...")
+    _model = WhisperModel("tiny.en", device="cpu", compute_type="int8")
     print("Whisper ready. PTT fully armed.")
     _model_ready.set()
 
@@ -424,7 +424,9 @@ def _transcribe_and_send(audio_data: np.ndarray):
         segments, _ = _model.transcribe(
             tmp_path,
             language="en",
-            beam_size=5,
+            beam_size=1,
+            vad_filter=True,
+            condition_on_previous_text=False,
             initial_prompt="Software engineering conversation with Claude Code. Python, terminal, file paths, git.",
         )
         text = " ".join(seg.text.strip() for seg in segments).strip()
