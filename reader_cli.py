@@ -17,10 +17,32 @@ import threading
 import asyncio
 import tempfile
 import os
-import subprocess
+import concurrent.futures
+from pathlib import Path
 
-VOICE = "en-US-AvaNeural"
-RATE  = "+0%"
+KOKORO_MODEL  = Path(__file__).parent / "kokoro-v1.0.onnx"
+KOKORO_VOICES = Path(__file__).parent / "voices-v1.0.bin"
+KOKORO_VOICE  = "af_heart"
+EDGE_VOICE    = "en-US-AvaNeural"
+
+# ---------------------------------------------------------------------------
+# Kokoro — loaded once
+# ---------------------------------------------------------------------------
+
+_kokoro = None
+_kokoro_lock = threading.Lock()
+
+def _get_kokoro():
+    global _kokoro
+    if _kokoro is None:
+        with _kokoro_lock:
+            if _kokoro is None:
+                try:
+                    from kokoro_onnx import Kokoro
+                    _kokoro = Kokoro(str(KOKORO_MODEL), str(KOKORO_VOICES))
+                except Exception:
+                    _kokoro = False
+    return _kokoro if _kokoro else None
 
 # ---------------------------------------------------------------------------
 # TTS — dedicated speaker thread with a queue so speech is serialised
@@ -28,13 +50,38 @@ RATE  = "+0%"
 
 _q = queue.Queue()
 
-import pygame
-pygame.mixer.init()
+def _play_samples(samples, sr):
+    import sounddevice as sd
+    sd.play(samples, sr)
+    sd.wait()
+
+def _speak_kokoro(text: str):
+    kokoro = _get_kokoro()
+    if not kokoro:
+        return False
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    if not sentences:
+        return True
+    results = [None] * len(sentences)
+    def _gen(i, s):
+        try:
+            samples, sr = kokoro.create(s, voice=KOKORO_VOICE, speed=1.0, lang="en-us")
+            results[i] = (samples, sr)
+        except Exception:
+            results[i] = None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        concurrent.futures.wait([ex.submit(_gen, i, s) for i, s in enumerate(sentences)])
+    for r in results:
+        if r is not None:
+            _play_samples(*r)
+    return True
 
 def _speak_edge(text: str):
-    import edge_tts
+    import edge_tts, pygame
+    if not pygame.mixer.get_init():
+        pygame.mixer.init()
     async def _run():
-        communicate = edge_tts.Communicate(text, VOICE, rate=RATE)
+        communicate = edge_tts.Communicate(text, EDGE_VOICE, rate="+0%")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
             tmp = f.name
         await communicate.save(tmp)
@@ -53,12 +100,14 @@ def _speak_edge(text: str):
             pass
 
 def _speaker_thread():
+    threading.Thread(target=_get_kokoro, daemon=True).start()
     while True:
         text = _q.get()
         if text is None:
             break
         try:
-            _speak_edge(text)
+            if not _speak_kokoro(text):
+                _speak_edge(text)
         except Exception:
             pass
         _q.task_done()

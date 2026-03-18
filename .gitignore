@@ -8,3 +8,5 @@ config.json
 pending_speech.txt
 spoken.log
 skip.flag
+*.onnx
+*.bin

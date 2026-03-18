@@ -14,7 +14,29 @@ import json
 import queue
 import threading
 import time
+import re
+import concurrent.futures
 from pathlib import Path
+
+# ── Kokoro (local TTS) — loaded once at startup ──────────────────────────────
+KOKORO_MODEL  = Path(__file__).parent / "kokoro-v1.0.onnx"
+KOKORO_VOICES = Path(__file__).parent / "voices-v1.0.bin"
+KOKORO_VOICE  = "af_heart"
+
+_kokoro = None
+_kokoro_lock = threading.Lock()
+
+def _get_kokoro():
+    global _kokoro
+    if _kokoro is None:
+        with _kokoro_lock:
+            if _kokoro is None:
+                try:
+                    from kokoro_onnx import Kokoro
+                    _kokoro = Kokoro(str(KOKORO_MODEL), str(KOKORO_VOICES))
+                except Exception:
+                    _kokoro = False  # mark as unavailable
+    return _kokoro if _kokoro else None
 
 CHAT_LOG = Path(__file__).parent / "chat_log.json"
 
@@ -114,7 +136,46 @@ def _save_config():
 # TTS thread
 # ---------------------------------------------------------------------------
 
-def _speak_edge(text: str, voice: str, rate_wpm: int):
+def _play_samples(samples, sr):
+    """Play raw audio samples via sounddevice."""
+    import sounddevice as sd
+    sd.play(samples, sr)
+    sd.wait()
+
+
+def _speak_kokoro(text: str, rate_wpm: int):
+    """Split text into sentences, generate all in parallel, play in order."""
+    kokoro = _get_kokoro()
+    if not kokoro:
+        return False
+
+    speed = 0.9 + (rate_wpm - 150) / 500  # ~150wpm=0.9, 250wpm=1.1
+    speed = max(0.7, min(1.4, speed))
+
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    if not sentences:
+        return True
+
+    # Generate all sentences in parallel, preserve order
+    results = [None] * len(sentences)
+    def _gen(i, s):
+        try:
+            samples, sr = kokoro.create(s, voice=KOKORO_VOICE, speed=speed, lang="en-us")
+            results[i] = (samples, sr)
+        except Exception:
+            results[i] = None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        futs = [ex.submit(_gen, i, s) for i, s in enumerate(sentences)]
+        concurrent.futures.wait(futs)
+
+    for r in results:
+        if r is not None:
+            _play_samples(*r)
+    return True
+
+
+def _speak_edge_fallback(text: str, voice: str, rate_wpm: int):
     import asyncio, edge_tts, tempfile, os
     import pygame
 
@@ -145,6 +206,9 @@ def _speak_edge(text: str, voice: str, rate_wpm: int):
 
 
 def _tts_worker(q: queue.Queue, rate_ref: list, voice_ref: list):
+    # Pre-warm Kokoro on a background thread so first utterance is faster
+    threading.Thread(target=_get_kokoro, daemon=True).start()
+
     eng = pyttsx3.init()
     eng.setProperty("volume", 0.95)
     while True:
@@ -156,13 +220,10 @@ def _tts_worker(q: queue.Queue, rate_ref: list, voice_ref: list):
             q.task_done()
             continue
         try:
-            voice = voice_ref[0] or ""
-            if "Neural" in voice and "-" in voice:
-                _speak_edge(text, voice, rate_ref[0])
-            else:
-                eng.setProperty("rate", rate_ref[0])
-                eng.say(text)
-                eng.runAndWait()
+            if not _speak_kokoro(text, rate_ref[0]):
+                # Kokoro unavailable — fall back to edge-tts
+                voice = voice_ref[0] or "en-US-AvaNeural"
+                _speak_edge_fallback(text, voice, rate_ref[0])
         except Exception:
             pass
         q.task_done()
