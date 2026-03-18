@@ -5,6 +5,7 @@
 edge-tts>=7.0.0
 pyttsx3>=2.90
 pywin32>=306
+pygame>=2.6.0
 
 # Streamlit UI
 streamlit>=1.30.0

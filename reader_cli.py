@@ -28,6 +28,9 @@ RATE  = "+0%"
 
 _q = queue.Queue()
 
+import pygame
+pygame.mixer.init()
+
 def _speak_edge(text: str):
     import edge_tts
     async def _run():
@@ -38,15 +41,11 @@ def _speak_edge(text: str):
         return tmp
     tmp = asyncio.run(_run())
     try:
-        subprocess.run(
-            ["powershell", "-NoProfile", "-c",
-             f"Add-Type -AssemblyName presentationCore; "
-             f"$mp = New-Object System.Windows.Media.MediaPlayer; "
-             f"$mp.Open([uri]'{tmp}'); $mp.Play(); "
-             f"Start-Sleep -Seconds ([math]::Ceiling((Get-Item '{tmp}').Length / 2500) + 1); "
-             f"$mp.Stop(); $mp.Close()"],
-            check=False
-        )
+        pygame.mixer.music.load(tmp)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.wait(50)
+        pygame.mixer.music.unload()
     finally:
         try:
             os.unlink(tmp)

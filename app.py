@@ -115,7 +115,8 @@ def _save_config():
 # ---------------------------------------------------------------------------
 
 def _speak_edge(text: str, voice: str, rate_wpm: int):
-    import asyncio, edge_tts, tempfile, os, subprocess
+    import asyncio, edge_tts, tempfile, os
+    import pygame
 
     rate_pct = int((rate_wpm - 150) / 150 * 100)
     rate_str = f"+{rate_pct}%" if rate_pct >= 0 else f"{rate_pct}%"
@@ -129,15 +130,13 @@ def _speak_edge(text: str, voice: str, rate_wpm: int):
 
     tmp = asyncio.run(_run())
     try:
-        subprocess.run(
-            ["powershell", "-NoProfile", "-c",
-             f"Add-Type -AssemblyName presentationCore; "
-             f"$mp = New-Object System.Windows.Media.MediaPlayer; "
-             f"$mp.Open([uri]'{tmp}'); $mp.Play(); "
-             f"Start-Sleep -Seconds ([math]::Ceiling((Get-Item '{tmp}').Length / 2500) + 1); "
-             f"$mp.Stop(); $mp.Close()"],
-            check=False
-        )
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+        pygame.mixer.music.load(tmp)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.wait(50)
+        pygame.mixer.music.unload()
     finally:
         try:
             os.unlink(tmp)
