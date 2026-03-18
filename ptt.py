@@ -20,6 +20,7 @@ import time
 import tempfile
 import threading
 import wave
+import concurrent.futures
 from pathlib import Path
 
 import numpy as np
@@ -55,8 +56,50 @@ def load_config() -> dict:
         return {}
 
 
-SAMPLE_RATE = 16000
-CHANNELS    = 1
+SAMPLE_RATE   = 16000
+CHANNELS      = 1
+KOKORO_MODEL  = Path(__file__).parent / "kokoro-v1.0.onnx"
+KOKORO_VOICES = Path(__file__).parent / "voices-v1.0.bin"
+KOKORO_VOICE  = "bf_isabella"
+
+_kokoro      = None
+_kokoro_lock = threading.Lock()
+
+def _get_kokoro():
+    global _kokoro
+    if _kokoro is None:
+        with _kokoro_lock:
+            if _kokoro is None:
+                try:
+                    from kokoro_onnx import Kokoro
+                    _kokoro = Kokoro(str(KOKORO_MODEL), str(KOKORO_VOICES))
+                except Exception:
+                    _kokoro = False
+    return _kokoro if _kokoro else None
+
+def _speak_kokoro(text: str, voice: str, rate: int) -> bool:
+    kokoro = _get_kokoro()
+    if not kokoro:
+        return False
+    speed = 0.9 + (rate - 150) / 500
+    speed = max(0.7, min(1.4, speed))
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    if not sentences:
+        return True
+    results = [None] * len(sentences)
+    def _gen(i, s):
+        try:
+            results[i] = kokoro.create(s, voice=voice, speed=speed, lang="en-us")
+        except Exception:
+            results[i] = None
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        concurrent.futures.wait([ex.submit(_gen, i, s) for i, s in enumerate(sentences)])
+    for r in results:
+        if r is not None:
+            samples, sr = r
+            sd.play(samples, sr)
+            sd.wait()
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -148,15 +191,8 @@ def _speak_edge(text: str, voice: str, rate: int):
 
 
 def _tts_worker():
-    import win32com.client
-    import pythoncom
-    pythoncom.CoInitialize()
-    speaker = win32com.client.Dispatch("SAPI.SpVoice")
-    speaker.Volume = 95
-    _applied_voice = None
-
-    SVSFlagsAsync        = 1
-    SVSFPurgeBeforeSpeak = 2
+    # Pre-warm Kokoro
+    threading.Thread(target=_get_kokoro, daemon=True).start()
 
     while True:
         item = _tts_q.get()
@@ -164,47 +200,19 @@ def _tts_worker():
             break
         text, rate = item
 
-        # If skip was signaled while this item was queued, discard it
         if _skip_flag.is_set():
             _tts_q.task_done()
             continue
 
         try:
-            cfg_voice = load_config().get("voice") or ""
-
-            if _is_edge_voice(cfg_voice):
-                _speak_edge(text, cfg_voice, rate)
-                # Edge-tts is blocking — clear flag after it finishes
-                _skip_flag.clear()
-            else:
-                # SAPI voice — apply if changed
-                if cfg_voice and cfg_voice != _applied_voice:
-                    voices = speaker.GetVoices()
-                    for i in range(voices.Count):
-                        if voices.Item(i).GetDescription() == cfg_voice:
-                            speaker.Voice = voices.Item(i)
-                            _applied_voice = cfg_voice
-                            print(f"[TTS] voice set to: {cfg_voice}")
-                            break
-                sapi_rate = max(-10, min(10, round((rate - 165) / 15)))
-                speaker.Rate = sapi_rate
-                # Async speak so we can interrupt on skip
-                speaker.Speak(text, SVSFlagsAsync)
-                while speaker.Status.RunningState == 2:   # 2 = SPRS_IS_SPEAKING
-                    if _skip_flag.is_set():
-                        speaker.Speak("", SVSFlagsAsync | SVSFPurgeBeforeSpeak)
-                        break
-                    time.sleep(0.05)
-                _skip_flag.clear()
+            cfg_voice = load_config().get("voice") or KOKORO_VOICE
+            if not _speak_kokoro(text, cfg_voice, rate):
+                # Fallback: edge-tts if Kokoro unavailable
+                if _is_edge_voice(cfg_voice):
+                    _speak_edge(text, cfg_voice, rate)
+            _skip_flag.clear()
         except Exception as e:
             print(f"[TTS] error: {e}")
-            try:
-                pythoncom.CoInitialize()
-                speaker = win32com.client.Dispatch("SAPI.SpVoice")
-                speaker.Volume = 95
-                _applied_voice = None
-            except Exception:
-                pass
         _tts_q.task_done()
 
 
