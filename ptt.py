@@ -356,7 +356,8 @@ def _watch_claude_responses():
         time.sleep(0.5)
 
 
-threading.Thread(target=_watch_claude_responses, daemon=True).start()
+# Response watching handled by hook_speak.py + Streamlit app
+# threading.Thread(target=_watch_claude_responses, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
