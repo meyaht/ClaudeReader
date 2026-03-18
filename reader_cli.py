@@ -22,7 +22,7 @@ from pathlib import Path
 
 KOKORO_MODEL  = Path(__file__).parent / "kokoro-v1.0.onnx"
 KOKORO_VOICES = Path(__file__).parent / "voices-v1.0.bin"
-KOKORO_VOICE  = "af_heart"
+KOKORO_VOICE  = "bf_isabella"
 EDGE_VOICE    = "en-US-AvaNeural"
 
 # ---------------------------------------------------------------------------

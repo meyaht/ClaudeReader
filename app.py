@@ -21,7 +21,7 @@ from pathlib import Path
 # ── Kokoro (local TTS) — loaded once at startup ──────────────────────────────
 KOKORO_MODEL  = Path(__file__).parent / "kokoro-v1.0.onnx"
 KOKORO_VOICES = Path(__file__).parent / "voices-v1.0.bin"
-KOKORO_VOICE  = "af_heart"
+KOKORO_VOICE  = "bf_isabella"
 
 _kokoro = None
 _kokoro_lock = threading.Lock()
@@ -453,9 +453,9 @@ with col1:
         "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
         "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
     ]
-    current_voice = st.session_state.voice or "af_heart"
+    current_voice = st.session_state.voice or "bf_isabella"
     if current_voice not in kokoro_voices:
-        current_voice = "af_heart"
+        current_voice = "bf_isabella"
     selected_voice = st.radio(
         "Kokoro Voice",
         kokoro_voices,
