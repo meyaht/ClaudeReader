@@ -1,0 +1,20 @@
+# ClaudeReader dependencies
+# Install with: pip install -r requirements.txt
+
+# Core TTS
+edge-tts>=7.0.0
+pyttsx3>=2.90
+pywin32>=306
+
+# Streamlit UI
+streamlit>=1.30.0
+
+# Push-to-talk / voice input
+faster-whisper>=1.0.0
+sounddevice>=0.4.6
+numpy>=1.24.0
+pyperclip>=1.8.2
+pynput>=1.7.6
+
+# Audio (used by ptt.py)
+# Note: winsound is built into Python on Windows — no install needed

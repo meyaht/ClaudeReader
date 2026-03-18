@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+chat_log.json
+config.json
+*.log
+.env
+pending_speech.txt
+spoken.log
+skip.flag
