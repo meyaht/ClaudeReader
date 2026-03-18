@@ -456,10 +456,11 @@ with col1:
     current_voice = st.session_state.voice or "af_heart"
     if current_voice not in kokoro_voices:
         current_voice = "af_heart"
-    selected_voice = st.selectbox(
+    selected_voice = st.radio(
         "Kokoro Voice",
         kokoro_voices,
         index=kokoro_voices.index(current_voice),
+        label_visibility="collapsed",
     )
     if selected_voice != st.session_state.voice:
         st.session_state.voice = selected_voice
