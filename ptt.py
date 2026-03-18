@@ -86,19 +86,15 @@ def _speak_kokoro(text: str, voice: str, rate: int) -> bool:
     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
     if not sentences:
         return True
-    results = [None] * len(sentences)
-    def _gen(i, s):
-        try:
-            results[i] = kokoro.create(s, voice=voice, speed=speed, lang="en-us")
-        except Exception:
-            results[i] = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        concurrent.futures.wait([ex.submit(_gen, i, s) for i, s in enumerate(sentences)])
-    for r in results:
-        if r is not None:
-            samples, sr = r
-            sd.play(samples, sr)
-            sd.wait()
+        futures = [ex.submit(kokoro.create, s, voice, speed, "en-us") for s in sentences]
+        for fut in futures:
+            try:
+                samples, sr = fut.result()
+                sd.play(samples, sr)
+                sd.wait()
+            except Exception:
+                pass
     return True
 
 

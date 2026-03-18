@@ -62,18 +62,14 @@ def _speak_kokoro(text: str):
     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
     if not sentences:
         return True
-    results = [None] * len(sentences)
-    def _gen(i, s):
-        try:
-            samples, sr = kokoro.create(s, voice=KOKORO_VOICE, speed=1.0, lang="en-us")
-            results[i] = (samples, sr)
-        except Exception:
-            results[i] = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        concurrent.futures.wait([ex.submit(_gen, i, s) for i, s in enumerate(sentences)])
-    for r in results:
-        if r is not None:
-            _play_samples(*r)
+        futures = [ex.submit(kokoro.create, s, KOKORO_VOICE, 1.0, "en-us") for s in sentences]
+        for fut in futures:
+            try:
+                samples, sr = fut.result()
+                _play_samples(samples, sr)
+            except Exception:
+                pass
     return True
 
 def _speak_edge(text: str):

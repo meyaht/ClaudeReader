@@ -144,33 +144,26 @@ def _play_samples(samples, sr):
 
 
 def _speak_kokoro(text: str, rate_wpm: int, voice: str = KOKORO_VOICE):
-    """Split text into sentences, generate all in parallel, play in order."""
+    """Generate sentences in parallel, play each one as soon as it's ready (in order)."""
     kokoro = _get_kokoro()
     if not kokoro:
         return False
 
-    speed = 0.9 + (rate_wpm - 150) / 500  # ~150wpm=0.9, 250wpm=1.1
+    speed = 0.9 + (rate_wpm - 150) / 500
     speed = max(0.7, min(1.4, speed))
 
     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
     if not sentences:
         return True
 
-    results = [None] * len(sentences)
-    def _gen(i, s):
-        try:
-            samples, sr = kokoro.create(s, voice=voice, speed=speed, lang="en-us")
-            results[i] = (samples, sr)
-        except Exception:
-            results[i] = None
-
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        futs = [ex.submit(_gen, i, s) for i, s in enumerate(sentences)]
-        concurrent.futures.wait(futs)
-
-    for r in results:
-        if r is not None:
-            _play_samples(*r)
+        futures = [ex.submit(kokoro.create, s, voice, speed, "en-us") for s in sentences]
+        for fut in futures:
+            try:
+                samples, sr = fut.result()
+                _play_samples(samples, sr)
+            except Exception:
+                pass
     return True
 
 
