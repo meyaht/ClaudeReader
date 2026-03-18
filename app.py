@@ -143,7 +143,7 @@ def _play_samples(samples, sr):
     sd.wait()
 
 
-def _speak_kokoro(text: str, rate_wpm: int):
+def _speak_kokoro(text: str, rate_wpm: int, voice: str = KOKORO_VOICE):
     """Split text into sentences, generate all in parallel, play in order."""
     kokoro = _get_kokoro()
     if not kokoro:
@@ -156,11 +156,10 @@ def _speak_kokoro(text: str, rate_wpm: int):
     if not sentences:
         return True
 
-    # Generate all sentences in parallel, preserve order
     results = [None] * len(sentences)
     def _gen(i, s):
         try:
-            samples, sr = kokoro.create(s, voice=KOKORO_VOICE, speed=speed, lang="en-us")
+            samples, sr = kokoro.create(s, voice=voice, speed=speed, lang="en-us")
             results[i] = (samples, sr)
         except Exception:
             results[i] = None
@@ -220,7 +219,7 @@ def _tts_worker(q: queue.Queue, rate_ref: list, voice_ref: list):
             q.task_done()
             continue
         try:
-            if not _speak_kokoro(text, rate_ref[0]):
+            if not _speak_kokoro(text, rate_ref[0], voice_ref[0] or KOKORO_VOICE):
                 # Kokoro unavailable — fall back to edge-tts
                 voice = voice_ref[0] or "en-US-AvaNeural"
                 _speak_edge_fallback(text, voice, rate_ref[0])
@@ -446,26 +445,27 @@ with col1:
 
     # Voice selector
     st.subheader("Voice")
-    sapi_voices  = _get_sapi_voices()
-    edge_voices  = _get_edge_voices()
-    all_voices   = sapi_voices + edge_voices
-    if all_voices:
-        current_voice = st.session_state.voice or "en-US-AvaNeural"
-        if current_voice not in all_voices:
-            current_voice = all_voices[0]
-        selected_voice = st.selectbox(
-            "Voice (SAPI or Neural)",
-            all_voices,
-            index=all_voices.index(current_voice),
-            format_func=lambda v: f"Neural: {v}" if "-" in v and "Neural" in v else f"SAPI: {v}",
-        )
-        if selected_voice != st.session_state.voice:
-            st.session_state.voice = selected_voice
-            if st.session_state.get("_voice_ref"):
-                st.session_state._voice_ref[0] = selected_voice
-            _save_config()
-    else:
-        st.caption("No voices found.")
+    kokoro_voices = [
+        "af_heart", "af_alloy", "af_aoede", "af_bella", "af_jessica",
+        "af_kore", "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky",
+        "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam",
+        "am_michael", "am_onyx", "am_puck",
+        "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+        "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
+    ]
+    current_voice = st.session_state.voice or "af_heart"
+    if current_voice not in kokoro_voices:
+        current_voice = "af_heart"
+    selected_voice = st.selectbox(
+        "Kokoro Voice",
+        kokoro_voices,
+        index=kokoro_voices.index(current_voice),
+    )
+    if selected_voice != st.session_state.voice:
+        st.session_state.voice = selected_voice
+        if st.session_state.get("_voice_ref"):
+            st.session_state._voice_ref[0] = selected_voice
+        _save_config()
 
     st.divider()
 
